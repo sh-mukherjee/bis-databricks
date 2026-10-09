@@ -6,7 +6,7 @@ __pycache__/
 # BIS raw data (large, re-downloadable — don't commit)
 *.zip
 *.csv
-data_sample/
+data_sample/*
 !data_sample/README.md
 
 # Databricks
