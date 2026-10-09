@@ -74,16 +74,14 @@ else:
     print(f"Downloading {DATA_URL} ...")
     try:
         import requests
+        # Serverless blocks file:/tmp access via dbutils.fs.cp, so stream
+        # the download straight into the Volume path (open() on /Volumes works).
         with requests.get(DATA_URL, stream=True, timeout=120) as r:
             r.raise_for_status()
-            # Write to driver local tmp first, then copy into Volume (serverless-safe)
-            tmp_zip = f"/tmp/{ZIP_NAME}"
-            with open(tmp_zip, "wb") as f:
+            with open(ZIP_PATH, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1 << 20):
                     if chunk:
                         f.write(chunk)
-            dbutils.fs.cp(f"file:{tmp_zip}", ZIP_PATH)
-            os.remove(tmp_zip)
         print(f"Downloaded -> {ZIP_PATH}")
     except Exception as e:
         try:
@@ -102,21 +100,26 @@ display(dbutils.fs.ls(RAW_DIR))
 
 # COMMAND ----------
 
-# 2) Unzip into the Volume (overwrite extracted CSVs)
-local_zip = "/tmp/bronze_dl.zip"
-dbutils.fs.cp(ZIP_PATH, f"file:{local_zip}")
-os.makedirs("/tmp/bronze_extract", exist_ok=True)
-with zipfile.ZipFile(local_zip, "r") as z:
-    z.extractall("/tmp/bronze_extract")
+# 2) Unzip into the Volume (overwrite extracted CSVs).
+# Serverless forbids file:/tmp via dbutils.fs.cp, so read the zip and write
+# members directly through /Volumes/... paths (plain Python I/O works there).
+with zipfile.ZipFile(ZIP_PATH, "r") as z:
     members = z.namelist()
 print("Archive members:", members)
 
-# Copy extracted CSV(s) into the Volume
-import glob
-for csv_file in glob.glob("/tmp/bronze_extract/*.csv"):
-    name = os.path.basename(csv_file)
-    dbutils.fs.cp(f"file:{csv_file}", f"{EXTRACT_DIR}/{name}", recurse=False)
-    print(f"Copied {name} -> {EXTRACT_DIR}/{name}")
+for member in members:
+    if not member.lower().endswith(".csv"):
+        continue
+    name = os.path.basename(member) or member.replace("/", "_")
+    dest = f"{EXTRACT_DIR}/{name}"
+    with zipfile.ZipFile(ZIP_PATH, "r") as z:
+        with z.open(member) as src, open(dest, "wb") as out:
+            while True:
+                chunk = src.read(1 << 20)
+                if not chunk:
+                    break
+                out.write(chunk)
+    print(f"Extracted {member} -> {dest}")
 
 display(dbutils.fs.ls(EXTRACT_DIR))
 
