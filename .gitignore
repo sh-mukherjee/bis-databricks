@@ -1,0 +1,19 @@
+# Python / Spark
+__pycache__/
+.venv/
+*.pyc
+
+# BIS raw data (large, re-downloadable — don't commit)
+*.zip
+*.csv
+data_sample/
+!data_sample/README.md
+
+# Databricks
+.dbx/
+.databricks/
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
