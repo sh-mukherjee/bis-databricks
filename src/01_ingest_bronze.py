@@ -35,15 +35,40 @@ import zipfile
 dbutils.fs.mkdirs(RAW_DIR)
 dbutils.fs.mkdirs(EXTRACT_DIR)
 
-def volume_has_file(path: str) -> bool:
-    try:
-        dbutils.fs.ls(path)
-        return True
-    except Exception:
-        return False
+# Sanitize DATA_URL: the data_url widget is sticky across runs, so a previous
+# accidental paste can leave a doubled filename (...zipWS_...zip). Repair that
+# instead of failing with a confusing 404.
+if ZIP_NAME and DATA_URL.endswith(ZIP_NAME + ZIP_NAME):
+    DATA_URL = DATA_URL[: -len(ZIP_NAME)]
+    print(f"Repaired doubled data_url -> {DATA_URL}")
+if not (DATA_URL.startswith("https://") and DATA_URL.endswith(".zip")):
+    raise ValueError(
+        f"data_url widget looks wrong: {DATA_URL!r}. Reset it to "
+        f"https://data.bis.org/static/bulk/WS_CPMI_CASHLESS_csv_flat.zip and re-run."
+    )
+ZIP_NAME = DATA_URL.split("/")[-1]
+ZIP_PATH = f"{RAW_DIR}/{ZIP_NAME}"
 
-# 1) Download if not already in the Volume (manual-upload fallback supported)
-if volume_has_file(ZIP_PATH):
+def find_existing_zip(raw_dir: str, prefer: str):
+    """Return path of already-uploaded zip, or None. Lists the directory instead
+    of ls() on a file path (dbutils.fs.ls on a file throws, so the old
+    volume_has_file() check always missed manual uploads)."""
+    try:
+        files = [f for f in dbutils.fs.ls(raw_dir) if not f.isDir()]
+    except Exception as e:
+        print(f"Could not list {raw_dir}: {e}")
+        return None
+    for f in files:
+        if f.path == prefer or f.path.endswith("/" + prefer.split("/")[-1]):
+            return f.path
+    zips = [f.path for f in files if f.path.lower().endswith(".zip")]
+    return zips[0] if zips else None
+
+# 1) Reuse manual upload if present; download only if the Volume has no zip
+existing = find_existing_zip(RAW_DIR, ZIP_PATH)
+if existing:
+    ZIP_PATH = existing
+    ZIP_NAME = ZIP_PATH.split("/")[-1]
     print(f"Zip already in Volume, skipping download: {ZIP_PATH}")
 else:
     print(f"Downloading {DATA_URL} ...")
@@ -61,11 +86,16 @@ else:
             os.remove(tmp_zip)
         print(f"Downloaded -> {ZIP_PATH}")
     except Exception as e:
+        try:
+            have = [f.path for f in dbutils.fs.ls(RAW_DIR)]
+        except Exception:
+            have = []
         raise RuntimeError(
-            f"Download failed ({e}). Free Edition serverless outbound internet is allow-listed. "
-            f"Fallback: download the zip in your browser from https://data.bis.org/bulkdownload "
+            f"Download failed ({e}). Free Edition serverless outbound internet is allow-listed, "
+            f"so download the zip in your browser from https://data.bis.org/bulkdownload "
             f"(Retail payments -> CPMI cashless payments (CSV, flat)) and upload it via "
-            f"Catalog Explorer -> {CATALOG} -> {SCHEMA} -> raw -> Upload to volume, then re-run this cell."
+            f"Catalog Explorer -> {CATALOG} -> {SCHEMA} -> raw -> Upload to volume, then re-run this cell. "
+            f"RAW_DIR now contains: {have}"
         ) from e
 
 display(dbutils.fs.ls(RAW_DIR))
