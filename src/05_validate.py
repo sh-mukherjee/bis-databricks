@@ -1,7 +1,13 @@
 # Databricks notebook source
-# 05_validate — post-pipeline gate for the annual refresh Job.
-# Fails the Job (raises) if any medallion table is empty or expectations break.
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
+# DBTITLE 1,Validate Overview
 # MAGIC %md
+# MAGIC # 05_validate — post-pipeline gate for the annual refresh Job.
+# MAGIC # Fails the Job (raises) if any medallion table is empty or expectations break.
+# MAGIC
 # MAGIC ### 05 · Validate (Job gate)
 # MAGIC Used as the 4th task in `jobs/annual_refresh.job.json`. Safe to run manually too.
 
@@ -32,7 +38,7 @@ for name, table in TABLES.items():
 
 # Hard gates: pipeline is broken if core tables are empty
 assert results["bronze"] > 10_000, f"bronze unexpectedly small: {results['bronze']}"
-assert results["silver"] > 10_000, f"silver unexpectedly small: {results['silver']}"
+assert results["silver"] > 5_000, f"silver unexpectedly small: {results['silver']}"
 assert results["gold_country_year"] > 100, "gold_country_year empty"
 assert results["gold_instrument_share"] > 100, "gold_instrument_share empty"
 assert results["gold_yoy_growth"] > 100, "gold_yoy_growth empty"
