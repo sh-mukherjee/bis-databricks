@@ -1,7 +1,13 @@
 # Databricks notebook source
-# 01_ingest_bronze — BIS CPMI cashless bulk zip -> Unity Volume -> bronze Delta
-# Free Edition: Serverless only. Uses absolute /Volumes/... paths (no relative paths, no DBFS).
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
+# DBTITLE 1,Bronze Ingest Overview
 # MAGIC %md
+# MAGIC # 01_ingest_bronze — BIS CPMI cashless bulk zip -> Unity Volume -> bronze Delta
+# MAGIC # Free Edition: Serverless only. Uses absolute /Volumes/... paths (no relative paths, no DBFS).
+# MAGIC
 # MAGIC ### 01 · Bronze ingest
 # MAGIC Downloads `WS_CPMI_CASHLESS_csv_flat.zip` (or reuses a manually uploaded copy),
 # MAGIC extracts to the `raw` Volume, reads CSV as all-strings, adds lineage, overwrites bronze.
@@ -268,12 +274,14 @@ display(raw_df.limit(10))
 
 # COMMAND ----------
 
+# DBTITLE 1,Cell 6
 # 4) Write bronze Delta (full overwrite; history preserved via Time Travel)
 if _ON_DATABRICKS:
     (
         raw_df.write.format("delta")
         .mode("overwrite")
         .option("overwriteSchema", "true")
+        .option("delta.columnMapping.mode", "name")
         .saveAsTable(BRONZE_TABLE)
     )
 
