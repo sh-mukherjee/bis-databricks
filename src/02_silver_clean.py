@@ -1,6 +1,8 @@
 # Databricks notebook source
-# 02_silver_clean — bronze raw strings -> typed, deduped silver + quarantine
+# DBTITLE 1,Silver Clean Overview
 # MAGIC %md
+# MAGIC # 02_silver_clean — bronze raw strings -> typed, deduped silver + quarantine
+# MAGIC
 # MAGIC ### 02 · Silver clean
 # MAGIC Splits `CODE: Label` columns, casts `year`/`obs_value`, dedupes, quarantines bad rows.
 

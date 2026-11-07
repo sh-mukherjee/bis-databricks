@@ -1,6 +1,12 @@
 # Databricks notebook source
-# 03_gold_analytics — silver -> analytics-ready gold tables (Delta, OPTIMIZE + ZORDER)
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
+# DBTITLE 1,Gold Analytics Overview
 # MAGIC %md
+# MAGIC # 03_gold_analytics — silver -> analytics-ready gold tables (Delta, OPTIMIZE + ZORDER)
+# MAGIC
 # MAGIC ### 03 · Gold analytics
 # MAGIC Builds `gold_country_year` (totals), `gold_instrument_share` (mix), `gold_yoy_growth` (dynamics).
 # MAGIC Values are in **millions of domestic currency** (not FX-adjusted — don't rank values cross-country);
