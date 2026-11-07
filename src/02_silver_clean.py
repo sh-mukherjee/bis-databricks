@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # DBTITLE 1,Silver Clean Overview
 # MAGIC %md
 # MAGIC # 02_silver_clean — bronze raw strings -> typed, deduped silver + quarantine

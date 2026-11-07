@@ -103,3 +103,13 @@ over = (
 if over:
     print(f"WARNING: {over} country/year/measure groups have instrument shares summing to >102%")
 print("VALIDATE OK")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT instrument_code, measure_code,
+# MAGIC        share_of_total IS NULL AS null_share, COUNT(*) n,
+# MAGIC        MIN(share_of_total) min_share, MAX(share_of_total) max_share
+# MAGIC FROM bis.payments.gold_instrument_share
+# MAGIC WHERE share_of_total IS NULL OR share_of_total < 0 OR share_of_total > 1.0001
+# MAGIC GROUP BY ALL ORDER BY n DESC;
