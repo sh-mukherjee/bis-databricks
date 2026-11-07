@@ -69,6 +69,9 @@ silver = (
 # Split good vs quarantine rows
 reject_reason = (
     F.when(F.col("obs_value").isNull(), "null_or_unparseable_obs_value")
+    # The BIS file encodes missing observations as the literal string "NaN" (status L/M). Spark casts
+    # that to a real NaN, which is not NULL and passes >= 0, so it must be rejected explicitly.
+    .when(F.isnan("obs_value"), "source_missing_value")
     .when(F.col("year").isNull(), "null_or_unparseable_year")
     .when(F.col("country_code").isNull(), "null_country_code")
     .when((F.col("year") < 2000) | (F.col("year") > 2030), "year_out_of_range")

@@ -82,7 +82,7 @@ gold_instrument_share = (
     parts.groupBy("country_code", "country", "year", "measure_code", "measure",
                   "instrument_code", "instrument", "currency_code", "currency")
     .agg(F.sum("obs_value").alias("obs_value"))
-    .join(totals, on=["country_code", "year", "measure_code"], how="left")
+    .join(totals, on=["country_code", "year", "measure_code"], how="inner")  # shares need a valid total
     .withColumn("share_of_total", F.col("obs_value") / F.nullif(F.col("total_obs"), F.lit(0)))
     .withColumn("_built_ts", F.current_timestamp())
 )

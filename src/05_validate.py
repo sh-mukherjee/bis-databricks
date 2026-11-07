@@ -51,7 +51,10 @@ assert measures == ["N", "V"], f"expected measures [N, V], got {measures}"
 assert min(years) <= 2012 and max(years) >= 2023, f"unexpected year span: {years}"
 
 # Quarantine should stay small (<5% of silver); warn but don't fail
-q_ratio = results["quarantine"] / max(results["bronze"], 1)
+# "source_missing_value" rows are BIS observations flagged missing (NaN): expected, so not counted here
+unexpected_q = spark.table(TABLES["quarantine"]).filter("_reject_reason <> 'source_missing_value'").count()
+print(f"quarantine: total={results['quarantine']:,} unexpected={unexpected_q:,}")
+q_ratio = unexpected_q / max(results["bronze"], 1)
 print(f"quarantine_ratio (vs bronze)={q_ratio:.4f}")
 if q_ratio > 0.05:
     print(f"WARNING: quarantine ratio {q_ratio:.1%} exceeds 5% — inspect {TABLES['quarantine']}")
@@ -70,7 +73,9 @@ dups = cy.groupBy("country_code", "year").count().filter("count > 1").count()
 assert dups == 0, f"gold_country_year has {dups} duplicated country/year keys"
 
 # 2) Both measures populated on every row (guards against half-empty N/V rows)
-null_rows = cy.filter("volume_mio_txns IS NULL OR value_mio_domestic IS NULL").count()
+null_rows = cy.filter(
+    "volume_mio_txns IS NULL OR value_mio_domestic IS NULL OR isnan(volume_mio_txns) OR isnan(value_mio_domestic)"
+).count()
 assert null_rows == 0, f"gold_country_year has {null_rows} rows missing volume or value"
 assert cy.filter("currency_code IS NULL").count() == 0, "gold_country_year has rows without a currency"
 
@@ -80,7 +85,12 @@ assert results["gold_yoy_growth"] == results["gold_country_year"], (
 )
 
 # 4) Instrument shares are fractions of the total (guards against overlapping sub-series being summed)
-bad_share = share.filter("share_of_total IS NULL OR share_of_total < 0 OR share_of_total > 1.0001").count()
+bad_share_df = share.filter("share_of_total IS NULL OR isnan(share_of_total) OR share_of_total < 0 OR share_of_total > 1.0001")
+bad_share = bad_share_df.count()
+if bad_share:
+    # Show what is wrong before failing (null = no matching total, >1 = part exceeds total)
+    display(bad_share_df.groupBy("instrument_code", "measure_code", F.col("share_of_total").isNull().alias("null_share")).count().orderBy("instrument_code"))
+    display(bad_share_df.orderBy("country_code", "year").limit(30))
 assert bad_share == 0, f"gold_instrument_share has {bad_share} rows with share outside [0, 1]"
 
 # Parts should roughly add up to the total per country/year/measure; warn only (sources can have gaps)
