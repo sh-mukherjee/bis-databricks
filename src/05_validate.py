@@ -56,4 +56,40 @@ print(f"quarantine_ratio (vs bronze)={q_ratio:.4f}")
 if q_ratio > 0.05:
     print(f"WARNING: quarantine ratio {q_ratio:.1%} exceeds 5% — inspect {TABLES['quarantine']}")
 
+# COMMAND ----------
+
+# Structural gates (these catch logic bugs that plain row counts miss)
+from pyspark.sql import functions as F
+
+cy = spark.table(TABLES["gold_country_year"])
+yoy = spark.table(TABLES["gold_yoy_growth"])
+share = spark.table(TABLES["gold_instrument_share"])
+
+# 1) gold_country_year: exactly one row per country + year (guards against split/duplicated rows)
+dups = cy.groupBy("country_code", "year").count().filter("count > 1").count()
+assert dups == 0, f"gold_country_year has {dups} duplicated country/year keys"
+
+# 2) Both measures populated on every row (guards against half-empty N/V rows)
+null_rows = cy.filter("volume_mio_txns IS NULL OR value_mio_domestic IS NULL").count()
+assert null_rows == 0, f"gold_country_year has {null_rows} rows missing volume or value"
+assert cy.filter("currency_code IS NULL").count() == 0, "gold_country_year has rows without a currency"
+
+# 3) YoY table must mirror the country-year table
+assert results["gold_yoy_growth"] == results["gold_country_year"], (
+    f"gold_yoy_growth rows ({results['gold_yoy_growth']}) != gold_country_year rows ({results['gold_country_year']})"
+)
+
+# 4) Instrument shares are fractions of the total (guards against overlapping sub-series being summed)
+bad_share = share.filter("share_of_total IS NULL OR share_of_total < 0 OR share_of_total > 1.0001").count()
+assert bad_share == 0, f"gold_instrument_share has {bad_share} rows with share outside [0, 1]"
+
+# Parts should roughly add up to the total per country/year/measure; warn only (sources can have gaps)
+over = (
+    share.groupBy("country_code", "year", "measure_code")
+    .agg(F.sum("share_of_total").alias("s"))
+    .filter("s > 1.02")
+    .count()
+)
+if over:
+    print(f"WARNING: {over} country/year/measure groups have instrument shares summing to >102%")
 print("VALIDATE OK")
