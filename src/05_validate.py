@@ -45,8 +45,8 @@ assert measures == ["N", "V"], f"expected measures [N, V], got {measures}"
 assert min(years) <= 2012 and max(years) >= 2023, f"unexpected year span: {years}"
 
 # Quarantine should stay small (<5% of silver); warn but don't fail
-q_ratio = results["quarantine"] / max(results["silver"], 1)
-print(f"quarantine_ratio={q_ratio:.4f}")
+q_ratio = results["quarantine"] / max(results["bronze"], 1)
+print(f"quarantine_ratio (vs bronze)={q_ratio:.4f}")
 if q_ratio > 0.05:
     print(f"WARNING: quarantine ratio {q_ratio:.1%} exceeds 5% — inspect {TABLES['quarantine']}")
 

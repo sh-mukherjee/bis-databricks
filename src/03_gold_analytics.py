@@ -27,8 +27,27 @@ TOTAL_CODE = "A"
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-silver = spark.table(SILVER)
-print(f"Silver rows: {silver.count():,}")
+silver_all = spark.table(SILVER)
+print(f"Silver rows: {silver_all.count():,}")
+
+# The source mixes headline series with overlapping sub-series under the same instrument_code
+# (e.g. instrument A holds 'total' AND 'fast payments'; B holds 'credit transfers' AND
+# 'cross-border credit transfers, sent'). Summing by instrument_code double counts, so keep
+# only the headline series, identified by the title suffix after "<Country> - ".
+HEADLINE_SERIES = {
+    "A": "cashless payments, total",
+    "B": "cashless payments, credit transfers",
+    "C": "cashless payments, direct debits",
+    "D": "cashless payments, cheques",
+    "E": "cashless payments, other payment instruments",
+    "F": "cashless payments, card and e-money payments with cards and e-money issued inside the country",
+}
+title_core = F.lower(F.trim(F.regexp_replace("title", r"^.*? - (Value|Volume) of ", "")))
+headline_cond = F.lit(False)
+for _code, _suffix in HEADLINE_SERIES.items():
+    headline_cond = headline_cond | ((F.col("instrument_code") == _code) & (title_core == _suffix))
+silver = silver_all.filter(headline_cond)
+print(f"Headline-series rows: {silver.count():,}")
 
 # --- Gold 1: country-year totals (instrument A), N and V pivoted to columns ---
 totals_long = silver.filter(F.col("instrument_code") == TOTAL_CODE)
@@ -82,7 +101,7 @@ for t in [T_COUNTRY_YEAR, T_INSTR_SHARE, T_YOY]:
 display(spark.sql(f"SELECT * FROM {T_COUNTRY_YEAR} ORDER BY year DESC, volume_mio_txns DESC LIMIT 15"))
 display(spark.sql(f"""
   SELECT country, year, instrument, obs_value, ROUND(share_of_total*100, 1) AS share_pct
-  FROM {T_INSTR_SHARE} WHERE measure_code='V' AND year=2024 ORDER BY obs_value DESC LIMIT 15
+  FROM {T_INSTR_SHARE} WHERE measure_code='V' AND year=(SELECT MAX(year) FROM {T_INSTR_SHARE}) ORDER BY obs_value DESC LIMIT 15
 """))
 display(spark.sql(f"""
   SELECT country, year, value_mio_domestic, ROUND(value_yoy_pct,1) AS value_yoy_pct,

@@ -48,6 +48,9 @@ if not _ON_DATABRICKS:
         def text(self, name, default, _label=""):
             self._defaults[name] = default
 
+        def dropdown(self, name, default, _choices=None, _label=""):
+            self._defaults[name] = default
+
         def get(self, name):
             # CLI `--name=value` wins, then env var, then notebook default.
             for a in sys.argv[1:]:
@@ -108,10 +111,14 @@ else:
 dbutils.widgets.text("catalog", "bis", "Catalog")
 dbutils.widgets.text("schema", "payments", "Schema")
 dbutils.widgets.text("data_url", "https://data.bis.org/static/bulk/WS_CPMI_CASHLESS_csv_flat.zip", "BIS bulk URL")
+dbutils.widgets.dropdown("force_download", "true", ["true", "false"], "Force re-download")
 
 CATALOG = dbutils.widgets.get("catalog").strip() or "bis"
 SCHEMA = dbutils.widgets.get("schema").strip() or "payments"
 DATA_URL = dbutils.widgets.get("data_url").strip()
+# true (default): always fetch the latest zip (needed for the scheduled refresh).
+# false: reuse a zip already in the Volume (manual-upload fallback).
+FORCE_DOWNLOAD = (dbutils.widgets.get("force_download") or "true").strip().lower() == "true"
 
 RAW_DIR = f"{VOLUMES_ROOT}/{CATALOG}/{SCHEMA}/raw"
 EXTRACT_DIR = f"{RAW_DIR}/extracted_cashless"
@@ -166,14 +173,16 @@ def find_existing_zip(raw_dir: str, prefer: str):
     return sorted(zips)[0] if zips else None
 
 # 1) Reuse manual upload if present; download only if the Volume has no zip
-existing = find_existing_zip(RAW_DIR, ZIP_PATH)
+existing = None if FORCE_DOWNLOAD else find_existing_zip(RAW_DIR, ZIP_PATH)
 if existing:
     ZIP_PATH = _strip_dbfs(existing)
     ZIP_NAME = ZIP_PATH.split("/")[-1]
-    print(f"Zip already in Volume, skipping download: {ZIP_PATH}")
+    print(f"Zip already in Volume, skipping download (force_download=false): {ZIP_PATH}")
 else:
     print(f"Downloading {DATA_URL} ...")
     try:
+        # Download to a temp name first so a failed download never clobbers a good zip.
+        _tmp_zip = _strip_dbfs(ZIP_PATH) + ".part"
         # Serverless blocks file:/tmp access via dbutils.fs.cp, so stream
         # the download straight into the Volume path (open() on /Volumes works).
         try:
@@ -181,14 +190,17 @@ else:
 
             with requests.get(DATA_URL, stream=True, timeout=120) as r:
                 r.raise_for_status()
-                with open(ZIP_PATH, "wb") as f:
+                with open(_tmp_zip, "wb") as f:
                     for chunk in r.iter_content(chunk_size=1 << 20):
                         if chunk:
                             f.write(chunk)
         except ImportError:
             import urllib.request
 
-            urllib.request.urlretrieve(DATA_URL, _strip_dbfs(ZIP_PATH))
+            urllib.request.urlretrieve(DATA_URL, _tmp_zip)
+        if not zipfile.is_zipfile(_tmp_zip):
+            raise ValueError("downloaded file is not a valid zip")
+        os.replace(_tmp_zip, _strip_dbfs(ZIP_PATH))
         print(f"Downloaded -> {ZIP_PATH}")
     except Exception as e:
         try:

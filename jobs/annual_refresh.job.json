@@ -3,9 +3,9 @@
   "//_notes": [
     "Free Edition: serverless only, max 5 concurrent tasks. This job uses 4 sequential notebook tasks.",
     "Create via: Databricks UI > Workflows > Create Job > switch to JSON/Code view and paste, OR via CLI: databricks jobs create --json @jobs/annual_refresh.job.json",
-    "Replace GIT_SOURCE_URL with your GitHub remote. Git Folders must be linked first.",
+    "git_url points at the public GitHub repo. Schedule is created PAUSED: set pause_status to UNPAUSED once a manual run succeeds.",
     "Widgets pass catalog/schema through; default bis/payments. Fallback catalog e.g. workspace also works.",
-    "Schedule: annual (BIS Red Book drops autumn T+1). Cron 0 0 7 11 * = 07 Nov yearly UTC.",
+    "Schedule: annual (BIS Red Book drops autumn T+1). Quartz cron 0 0 7 11 11 ? = 07:00 UTC on 11 Nov yearly (6 fields; 5-field cron is invalid).",
     "Attribution: BIS statistics under https://www.bis.org/terms_conditions.htm"
   ],
   "name": "bis-cashless-annual-refresh",
@@ -16,12 +16,12 @@
   },
   "queue": { "enabled": true },
   "schedule": {
-    "quartz_cron_expression": "0 0 7 11 *",
+    "quartz_cron_expression": "0 0 7 11 11 ?",
     "timezone_id": "UTC",
     "pause_status": "PAUSED"
   },
   "git_source": {
-    "git_url": "REPLACE_ME_WITH_YOUR_GITHUB_REMOTE_URL",
+    "git_url": "https://github.com/sh-mukherjee/bis-databricks",
     "git_provider": "gitHub",
     "git_branch": "main"
   },
@@ -32,7 +32,7 @@
       "description": "Download BIS bulk zip to Volume + overwrite bronze_cpmi_cashless",
       "notebook_task": {
         "notebook_path": "src/01_ingest_bronze",
-        "base_parameters": { "catalog": "bis", "schema": "payments" },
+        "base_parameters": { "catalog": "bis", "schema": "payments", "force_download": "true" },
         "source": "GIT"
       },
       "environment_key": "serverless",

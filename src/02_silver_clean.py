@@ -31,7 +31,7 @@ def code(col_name: str):
 def label(col_name: str):
     """'BR: Brazil' -> 'Brazil' (falls back to full string if no colon)"""
     c = F.col(f"`{col_name}`")
-    return F.when(F.instr(c, ":") > 0, F.trim(F.split(c, ":").getItem(1))).otherwise(F.trim(c))
+    return F.when(F.instr(c, ":") > 0, F.trim(F.regexp_extract(c, r"^[^:]*:(.*)$", 1))).otherwise(F.trim(c))
 
 silver = (
     bronze
@@ -65,10 +65,18 @@ silver = (
 # COMMAND ----------
 
 # Split good vs quarantine rows
-bad_cond = F.col("obs_value").isNull() | F.col("year").isNull() | F.col("country_code").isNull()
+reject_reason = (
+    F.when(F.col("obs_value").isNull(), "null_or_unparseable_obs_value")
+    .when(F.col("year").isNull(), "null_or_unparseable_year")
+    .when(F.col("country_code").isNull(), "null_country_code")
+    .when((F.col("year") < 2000) | (F.col("year") > 2030), "year_out_of_range")
+    .when(F.col("obs_value") < 0, "negative_obs_value")
+)
+flagged = silver.withColumn("_reject_reason", reject_reason)
 
-quarantine = silver.filter(bad_cond)
-good = silver.filter(~bad_cond).filter((F.col("year") >= 2000) & (F.col("year") <= 2030) & (F.col("obs_value") >= 0))
+# Every rejected row lands in quarantine with a reason (nothing is dropped silently)
+quarantine = flagged.filter(F.col("_reject_reason").isNotNull())
+good = flagged.filter(F.col("_reject_reason").isNull()).drop("_reject_reason")
 
 q_count = quarantine.count()
 g_count = good.count()
@@ -77,8 +85,14 @@ display(quarantine.limit(20))
 
 # Natural-key dedupe: one observation per country/measure/instrument/year/direction/table
 key_cols = ["country_code", "measure_code", "instrument_code", "direction_code", "year", "table_id"]
-deduped = good.dropDuplicates(key_cols)
-print(f"after dedupe: {deduped.count():,} (removed {g_count - deduped.count():,})")
+# Deterministic: title is part of the key (the source has several sub-series per instrument);
+# if true duplicates remain, keep the row with the latest ingest ts, then the largest value.
+key_cols = key_cols + ["title", "currency_code"]
+from pyspark.sql.window import Window
+_w = Window.partitionBy(*key_cols).orderBy(F.col("_ingest_ts").desc(), F.col("obs_value").desc())
+deduped = good.withColumn("_rn", F.row_number().over(_w)).filter("_rn = 1").drop("_rn")
+d_count = deduped.count()
+print(f"after dedupe: {d_count:,} (removed {g_count - d_count:,})")
 
 # COMMAND ----------
 
