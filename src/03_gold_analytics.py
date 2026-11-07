@@ -58,11 +58,16 @@ print(f"Headline-series rows: {silver.count():,}")
 # --- Gold 1: country-year totals (instrument A), N and V pivoted to columns ---
 totals_long = silver.filter(F.col("instrument_code") == TOTAL_CODE)
 gold_country_year = (
-    totals_long.groupBy("country_code", "country", "year", "currency_code", "currency")
-    .pivot("measure_code", ["N", "V"])
-    .agg(F.sum("obs_value"))
-    .withColumnRenamed("N", "volume_mio_txns")
-    .withColumnRenamed("V", "value_mio_domestic")
+    # N rows carry unit "373: Pure Number", V rows carry the currency, so currency must NOT be a
+    # grouping key (it split each country-year into two half-empty rows). Take it from V rows.
+    totals_long.groupBy("country_code", "country", "year")
+    .agg(
+        F.sum(F.when(F.col("measure_code") == "N", F.col("obs_value"))).alias("volume_mio_txns"),
+        F.sum(F.when(F.col("measure_code") == "V", F.col("obs_value"))).alias("value_mio_domestic"),
+        F.max(F.when(F.col("measure_code") == "V", F.col("currency_code"))).alias("currency_code"),
+        F.max(F.when(F.col("measure_code") == "V", F.col("currency"))).alias("currency"),
+    )
+    .select("country_code", "country", "year", "currency_code", "currency", "volume_mio_txns", "value_mio_domestic")
     .withColumn("_built_ts", F.current_timestamp())
 )
 gold_country_year.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(T_COUNTRY_YEAR)
