@@ -78,7 +78,7 @@ If that fails with a connection error:
 2. In Databricks: **Catalog Explorer → bis → payments → raw → Upload to volume** → upload the `.zip`.
 3. Set the `force_download` widget to `false` and re-run `01_ingest_bronze`. By default (`true`) it always downloads the latest zip, which the scheduled Job relies on. — it auto-detects the existing zip and skips the download.
 
-### 5. Build the dashboard (optional, recommended)
+### 5. Build the dashboard
 
 Create a new SQL Dashboard on the 2X-Small warehouse, add one tile per query in `src/04_analysis_sql.sql`:
 
